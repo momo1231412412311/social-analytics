@@ -1,0 +1,59 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 antialiased;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-zinc-900;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-zinc-600 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-zinc-500;
+}
+
+/* Recharts tooltip dark override */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  @apply !bg-zinc-800 !border-zinc-700 !rounded-lg !shadow-xl;
+}
+.recharts-tooltip-wrapper .recharts-default-tooltip .recharts-tooltip-label {
+  @apply !text-zinc-200;
+}
+.recharts-tooltip-wrapper .recharts-default-tooltip .recharts-tooltip-item {
+  @apply !text-zinc-300;
+}
+
+@layer utilities {
+  .platform-instagram {
+    background: linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%);
+  }
+  .platform-tiktok {
+    background: linear-gradient(135deg, #010101 0%, #ff0050 50%, #00f2ea 100%);
+  }
+  .platform-youtube {
+    background: linear-gradient(135deg, #ff0000 0%, #cc0000 100%);
+  }
+  .card {
+    @apply bg-zinc-900 border border-zinc-800 rounded-xl;
+  }
+  .card-hover {
+    @apply hover:border-zinc-700 transition-colors duration-200;
+  }
+}

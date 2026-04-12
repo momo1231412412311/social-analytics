@@ -1,0 +1,19 @@
+[build]
+  command   = "npm run build"
+  publish   = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+# Increase function timeout for data sync (platform APIs can be slow)
+[functions]
+  node_bundler = "nft"
+
+[functions."___netlify-handler"]
+  timeout = 30
+
+[functions."___netlify-edge-handler"]
+  timeout = 30
