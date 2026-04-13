@@ -1,85 +1,83 @@
 /**
- * Instagram public data via RapidAPI scraper.
+ * Instagram public data via direct scraping (no API key required).
  *
- * Default API: "Instgram" by omarmhaimdat on RapidAPI
- * Host: instagram230.p.rapidapi.com
- * Subscribe at: https://rapidapi.com/omarmhaimdat/api/instagram230
+ * Strategy:
+ *   1. Fetch https://www.instagram.com/api/v1/users/web_profile_info/?username={handle}
+ *      with the standard Instagram web app-id header. Returns profile + ~12 recent posts.
+ *   2. Fall back to parsing embedded JSON from the public profile HTML page
+ *      using cheerio if the JSON API returns an error.
  *
- * Endpoints used:
- *   GET /user?username={handle}        → profile (Instagram GraphQL format)
- *   GET /user_posts?username={handle}  → recent posts list
- *
- * Override the host with INSTAGRAM_RAPIDAPI_HOST if you subscribe to a
- * different provider. Update endpoint paths in fetchInstagram() accordingly.
+ * Note: Instagram aggressively rate-limits scrapers. The Supabase 6-hour cache
+ * in db.ts significantly reduces how often these requests are made.
  */
 
+import { load } from 'cheerio';
 import type { AnalyticsResult, PostData, ContentType } from '../types';
 import { calcFrequency, calcContentTypes } from './youtube';
 
-const RAPIDAPI_KEY  = process.env.RAPIDAPI_KEY!;
-const RAPIDAPI_HOST = process.env.INSTAGRAM_RAPIDAPI_HOST ?? 'instagram230.p.rapidapi.com';
-const BASE          = `https://${RAPIDAPI_HOST}`;
+const IG_APP_ID = '936619743392459';
 
-async function rapidGet(path: string) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: {
-      'x-rapidapi-key':  RAPIDAPI_KEY,
-      'x-rapidapi-host': RAPIDAPI_HOST,
-    },
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Instagram API ${res.status}: ${body.slice(0, 300)}`);
-  }
-  return res.json();
-}
+const FETCH_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+    '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  'Accept':          '*/*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'x-ig-app-id':    IG_APP_ID,
+  'Referer':         'https://www.instagram.com/',
+  'Origin':          'https://www.instagram.com',
+};
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
 // ── Normalization ─────────────────────────────────────────────────────────────
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
-function mediaTypeToContentType(mediaType: number | string): ContentType {
-  const mt = Number(mediaType);
-  if (mt === 2) return 'video';
-  if (mt === 8) return 'carousel';
-  if (mt === 1) return 'photo';
-  const s = String(mediaType).toLowerCase();
-  if (s.includes('reel') || s.includes('clip')) return 'short';
-  if (s.includes('video')) return 'video';
-  if (s.includes('carousel') || s.includes('sidecar')) return 'carousel';
+function mediaTypeToContentType(node: any): ContentType {
+  if (node.__typename === 'GraphSidecar' || node.media_type === 8) return 'carousel';
+  if (node.__typename === 'GraphVideo'   || node.is_video || node.media_type === 2) {
+    const dur = node.video_duration ?? 0;
+    return dur > 0 && dur <= 65 ? 'short' : 'video';
+  }
   return 'photo';
 }
 
-function mapPost(item: any): PostData {
-  const views    = item.view_count     ?? item.video_view_count   ?? item.play_count ?? 0;
-  const likes    = item.like_count     ?? item.likes_count        ?? 0;
-  const comments = item.comment_count  ?? item.comments_count     ?? 0;
-  const taken    = item.taken_at       ?? item.timestamp          ?? 0;
-  const published = typeof taken === 'number'
-    ? new Date(taken * 1000).toISOString()
-    : String(taken);
+function mapNode(node: any): PostData {
+  const views    = node.video_view_count  ?? node.view_count  ?? 0;
+  const likes    =
+    node.like_count ??
+    node.edge_liked_by?.count ??
+    node.edge_media_preview_like?.count ??
+    0;
+  const comments =
+    node.comment_count ??
+    node.edge_media_to_comment?.count ??
+    node.edge_media_preview_comment?.count ??
+    0;
+  const taken    = node.taken_at_timestamp ?? node.taken_at ?? 0;
+  const ct       = mediaTypeToContentType(node);
+  const engBase  = views > 0 ? views : (likes + comments) > 0 ? (likes + comments) * 50 : 1;
+  const engRate  = ((likes + comments) / engBase) * 100;
 
   const thumb =
-    item.thumbnail_url                                            ??
-    item.image_versions2?.candidates?.[0]?.url                   ??
-    item.display_url                                              ??
-    item.cover_frame_url                                          ??
+    node.thumbnail_src          ??
+    node.display_url            ??
+    node.image_versions2?.candidates?.[0]?.url ??
     '';
 
-  const mediaType = item.media_type ?? (views > 0 ? 2 : 1);
-  const ct        = mediaTypeToContentType(mediaType);
-  const engRate   = views > 0 ? ((likes + comments) / views) * 100 : 0;
-
   return {
-    id:               String(item.id ?? item.pk ?? Math.random()),
-    title:            item.caption?.text?.slice(0, 120) ?? '',
+    id:               String(node.id ?? node.pk ?? Math.random()),
+    title:            node.caption?.text?.slice(0, 120) ??
+                      node.edge_media_to_caption?.edges?.[0]?.node?.text?.slice(0, 120) ??
+                      '',
     thumbnail_url:    thumb,
-    post_url:         item.permalink ?? `https://www.instagram.com/p/${item.code ?? item.shortcode ?? ''}`,
-    published_at:     published,
+    post_url:         node.permalink ??
+                      `https://www.instagram.com/p/${node.shortcode ?? node.code ?? ''}`,
+    published_at:     taken ? new Date(taken * 1000).toISOString() : new Date().toISOString(),
     views,
     likes,
     comments,
-    shares:           item.reshare_count ?? 0,
-    duration_seconds: item.video_duration ?? 0,
+    shares:           node.reshare_count ?? 0,
+    duration_seconds: node.video_duration ?? 0,
     content_type:     ct,
     engagement_rate:  engRate,
   };
@@ -87,46 +85,132 @@ function mapPost(item: any): PostData {
 
 function mapProfile(user: any): AnalyticsResult['profile'] {
   return {
-    username:     user.username    ?? '',
-    display_name: user.full_name   ?? user.name ?? user.username ?? '',
-    avatar_url:   user.profile_pic_url ?? user.hd_profile_pic_url_info?.url ?? '',
-    bio:          user.biography   ?? user.bio ?? '',
+    username:     user.username     ?? '',
+    display_name: user.full_name    ?? user.name ?? user.username ?? '',
+    avatar_url:   user.profile_pic_url_hd ?? user.profile_pic_url ?? '',
+    bio:          user.biography    ?? user.bio  ?? '',
     followers:    user.edge_followed_by?.count ?? user.follower_count   ?? user.followers_count ?? 0,
     following:    user.edge_follow?.count      ?? user.following_count  ?? 0,
     post_count:   user.edge_owner_to_timeline_media?.count ?? user.media_count ?? 0,
-    total_likes:  user.total_igtv_videos?.count ?? 0,
-    verified:     user.is_verified ?? false,
+    total_likes:  0,
+    verified:     user.is_verified  ?? false,
     profile_url:  `https://www.instagram.com/${user.username ?? ''}`,
   };
+}
+
+// ── Fetch strategies ──────────────────────────────────────────────────────────
+
+/** Strategy 1: Instagram internal JSON API (fastest, no auth needed for public profiles) */
+async function fetchViaJsonApi(handle: string): Promise<{ user: any; posts: any[] }> {
+  const url = `https://www.instagram.com/api/v1/users/web_profile_info/?username=${encodeURIComponent(handle)}`;
+  const res = await fetch(url, { headers: FETCH_HEADERS });
+
+  if (!res.ok) {
+    throw new Error(`Instagram JSON API returned ${res.status}`);
+  }
+
+  const json = await res.json();
+  const user = json.data?.user;
+  if (!user?.username) throw new Error('No user in Instagram JSON API response');
+
+  const edges: any[] = user.edge_owner_to_timeline_media?.edges ?? [];
+  const posts = edges.map((e: any) => e.node);
+  return { user, posts };
+}
+
+/** Strategy 2: Parse embedded JSON from the profile HTML page */
+async function fetchViaHtml(handle: string): Promise<{ user: any; posts: any[] }> {
+  const url = `https://www.instagram.com/${encodeURIComponent(handle)}/`;
+  const res = await fetch(url, { headers: { ...FETCH_HEADERS, Accept: 'text/html,application/xhtml+xml' } });
+
+  if (!res.ok) throw new Error(`Instagram profile page returned ${res.status}`);
+
+  const html = await res.text();
+
+  // Instagram embeds profile JSON in <script type="application/json"> tags
+  // and sometimes in window._sharedData / window.__additionalDataLoaded
+  const $ = load(html);
+  let user: any = null;
+  let posts: any[] = [];
+
+  // Try <script type="application/json"> blocks
+  $('script[type="application/json"]').each((_, el) => {
+    if (user) return;
+    try {
+      const raw = $(el).html() ?? '';
+      const parsed = JSON.parse(raw);
+      // Walk the serialized React tree looking for user data
+      const found = findUserInObject(parsed);
+      if (found?.username) { user = found; posts = found.posts ?? []; }
+    } catch { /* ignore parse errors */ }
+  });
+
+  // Try window._sharedData pattern in inline scripts
+  if (!user) {
+    $('script').each((_, el) => {
+      if (user) return;
+      const text = $(el).html() ?? '';
+      const match = text.match(/window\._sharedData\s*=\s*(\{[\s\S]+?\});\s*<\/script>/)
+                 ?? text.match(/window\._sharedData\s*=\s*(\{[\s\S]+?\});/);
+      if (match) {
+        try {
+          const data = JSON.parse(match[1]);
+          const profilePage = data?.entry_data?.ProfilePage?.[0]?.graphql?.user;
+          if (profilePage?.username) {
+            user  = profilePage;
+            posts = profilePage.edge_owner_to_timeline_media?.edges?.map((e: any) => e.node) ?? [];
+          }
+        } catch { /* ignore */ }
+      }
+    });
+  }
+
+  if (!user?.username) {
+    throw new Error(
+      'Could not extract Instagram profile data from page. ' +
+      'Instagram may require a login or the account is private.'
+    );
+  }
+
+  return { user, posts };
+}
+
+/** Recursively search a parsed JSON object for an Instagram user node */
+function findUserInObject(obj: any, depth = 0): any {
+  if (!obj || typeof obj !== 'object' || depth > 8) return null;
+  if (obj.username && (obj.edge_followed_by || obj.follower_count)) return obj;
+  for (const val of Object.values(obj)) {
+    const found = findUserInObject(val, depth + 1);
+    if (found) return found;
+  }
+  return null;
 }
 
 // ── Main fetch ────────────────────────────────────────────────────────────────
 
 export async function fetchInstagram(handle: string): Promise<AnalyticsResult> {
-  const enc = encodeURIComponent(handle);
+  const cleanHandle = handle.replace(/^@/, '');
 
-  // Profile
-  const profileRes = await rapidGet(`/user?username=${enc}`);
-  const user =
-    profileRes.data?.user   ??
-    profileRes.data         ??
-    profileRes.user         ??
-    profileRes;
-  if (!user?.username) {
-    throw new Error(`Instagram profile not found: ${handle}`);
+  let user: any;
+  let rawPosts: any[];
+
+  try {
+    ({ user, posts: rawPosts } = await fetchViaJsonApi(cleanHandle));
+  } catch (err) {
+    // Fall back to HTML scraping
+    try {
+      ({ user, posts: rawPosts } = await fetchViaHtml(cleanHandle));
+    } catch (htmlErr) {
+      // Surface the original JSON API error as it's usually more informative
+      throw new Error(
+        `Instagram fetch failed. ${(err as Error).message}. ` +
+        `HTML fallback: ${(htmlErr as Error).message}`
+      );
+    }
   }
 
-  // Posts (up to ~30 recent)
-  const postsRes = await rapidGet(`/user_posts?username=${enc}`);
-  const rawPosts: any[] =
-    postsRes.data?.items                                                                 ??
-    postsRes.data?.user?.edge_owner_to_timeline_media?.edges?.map((e: any) => e.node)   ??
-    postsRes.items                                                                       ??
-    postsRes.edges?.map((e: any) => e.node)                                              ??
-    [];
-
-  const posts: PostData[] = rawPosts.map(mapPost);
-  const sorted = [...posts].sort((a, b) => b.views - a.views);
+  const posts: PostData[] = rawPosts.map(mapNode);
+  const sorted = [...posts].sort((a, b) => b.views - a.views || b.likes - a.likes);
 
   const totalViews  = posts.reduce((s, p) => s + p.views, 0);
   const avgViews    = posts.length ? Math.round(totalViews / posts.length) : 0;
@@ -137,17 +221,17 @@ export async function fetchInstagram(handle: string): Promise<AnalyticsResult> {
 
   return {
     platform: 'instagram',
-    handle,
-    profile: mapProfile(user),
+    handle:   cleanHandle,
+    profile:  mapProfile(user),
     summary: {
-      avg_views:               avgViews,
-      avg_likes:               avgLikes,
-      avg_comments:            avgComments,
-      avg_engagement_rate:     avgEngRate,
-      total_views:             totalViews,
+      avg_views:                  avgViews,
+      avg_likes:                  avgLikes,
+      avg_comments:               avgComments,
+      avg_engagement_rate:        avgEngRate,
+      total_views:                totalViews,
       posting_frequency_per_week: calcFrequency(posts.map(p => p.published_at)),
-      best_content_type:       topTypes[0]?.type ?? 'photo',
-      top_content_types:       topTypes,
+      best_content_type:          topTypes[0]?.type ?? 'photo',
+      top_content_types:          topTypes,
     },
     posts: sorted,
     fetched_at: Math.floor(Date.now() / 1000),

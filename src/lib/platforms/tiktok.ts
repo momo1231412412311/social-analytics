@@ -1,35 +1,30 @@
 /**
- * TikTok public data via RapidAPI scraper.
+ * TikTok public data via EnsembleData API.
  *
- * Default API: "Tiktok API" by Lundehund on RapidAPI
- * Host: tiktok-api23.p.rapidapi.com
- * Subscribe at: https://rapidapi.com/Lundehund/api/tiktok-api23
+ * Sign up (free trial, no card needed) at: https://ensembledata.com/
+ * Set your token in ENSEMBLEDATA_TOKEN env var.
  *
  * Endpoints used:
- *   GET /api/user/info?uniqueId={handle}         → profile + stats
- *   GET /api/user/posts?uniqueId={handle}&count=30 → recent videos
- *
- * Override the host with TIKTOK_RAPIDAPI_HOST if you subscribe to a
- * different provider. Update endpoint paths in fetchTikTok() accordingly.
+ *   GET https://ensembledata.com/apis/tt/user/info?username={handle}&token={token}
+ *   GET https://ensembledata.com/apis/tt/user/posts?username={handle}&depth=3&cursor=0&token={token}
  */
 
 import type { AnalyticsResult, PostData, ContentType } from '../types';
 import { calcFrequency, calcContentTypes } from './youtube';
 
-const RAPIDAPI_KEY  = process.env.RAPIDAPI_KEY!;
-const RAPIDAPI_HOST = process.env.TIKTOK_RAPIDAPI_HOST ?? 'tiktok-api23.p.rapidapi.com';
-const BASE          = `https://${RAPIDAPI_HOST}`;
+const BASE  = 'https://ensembledata.com/apis';
+const TOKEN = process.env.ENSEMBLEDATA_TOKEN ?? '';
 
-async function rapidGet(path: string) {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: {
-      'x-rapidapi-key':  RAPIDAPI_KEY,
-      'x-rapidapi-host': RAPIDAPI_HOST,
-    },
-  });
+async function edGet(path: string) {
+  if (!TOKEN) throw new Error('ENSEMBLEDATA_TOKEN is not set. Get a free token at https://ensembledata.com/');
+  const res = await fetch(`${BASE}${path}&token=${TOKEN}`);
+  if (res.status === 401 || res.status === 403) {
+    throw new Error('EnsembleData token invalid or expired. Check ENSEMBLEDATA_TOKEN.');
+  }
+  if (res.status === 429) throw new Error('EnsembleData rate limit reached. Try again later.');
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`TikTok API ${res.status}: ${body.slice(0, 300)}`);
+    throw new Error(`EnsembleData TikTok API ${res.status}: ${body.slice(0, 300)}`);
   }
   return res.json();
 }
@@ -37,32 +32,33 @@ async function rapidGet(path: string) {
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 function ttContentType(dur: number): ContentType {
-  if (dur <= 65) return 'short';
-  return 'video';
+  return dur <= 65 ? 'short' : 'video';
 }
 
 function mapVideo(item: any): PostData {
+  // EnsembleData wraps TikTok's native aweme object; try nested and flat shapes
   const stats   = item.stats ?? item.statistics ?? {};
-  const views   = stats.playCount  ?? stats.viewCount  ?? item.playCount  ?? item.viewCount  ?? 0;
-  const likes   = stats.diggCount  ?? stats.likeCount  ?? item.diggCount  ?? item.likeCount  ?? 0;
-  const comments= stats.commentCount ?? item.commentCount ?? 0;
-  const shares  = stats.shareCount  ?? item.shareCount  ?? 0;
+  const views   = stats.playCount   ?? stats.play_count  ?? item.play_count  ?? 0;
+  const likes   = stats.diggCount   ?? stats.like_count  ?? item.digg_count  ?? 0;
+  const comments= stats.commentCount ?? stats.comment_count ?? item.comment_count ?? 0;
+  const shares  = stats.shareCount   ?? stats.share_count  ?? item.share_count   ?? 0;
   const dur     = item.video?.duration ?? item.duration ?? 0;
-  const created = item.createTime   ?? item.create_time ?? 0;
+  const created = item.createTime    ?? item.create_time   ?? 0;
   const thumb   =
-    item.video?.cover             ??
-    item.video?.originCover       ??
-    item.cover                    ??
+    item.video?.cover        ??
+    item.video?.originCover  ??
+    item.cover               ??
     '';
-
+  const authorHandle = item.author?.uniqueId ?? item.authorId ?? '';
   const engRate = views > 0 ? ((likes + comments) / views) * 100 : 0;
 
   return {
-    id:               String(item.id ?? item.awemeId ?? Math.random()),
-    title:            item.desc?.slice(0, 120) ?? '',
+    id:               String(item.id ?? item.aweme_id ?? Math.random()),
+    title:            (item.desc ?? item.title ?? '').slice(0, 120),
     thumbnail_url:    thumb,
-    post_url:         item.shareUrl ?? `https://www.tiktok.com/@${item.author?.uniqueId ?? 'user'}/video/${item.id ?? ''}`,
-    published_at:     created ? new Date(created * 1000).toISOString() : new Date().toISOString(),
+    post_url:         item.share_url ??
+                      `https://www.tiktok.com/@${authorHandle}/video/${item.id ?? ''}`,
+    published_at:     created ? new Date(Number(created) * 1000).toISOString() : new Date().toISOString(),
     views,
     likes,
     comments,
@@ -73,18 +69,17 @@ function mapVideo(item: any): PostData {
   };
 }
 
-function mapUser(user: any, authorStats: any): AnalyticsResult['profile'] {
-  const s = authorStats ?? user.stats ?? user.authorStats ?? {};
+function mapUser(user: any, stats: any): AnalyticsResult['profile'] {
   return {
-    username:     user.uniqueId   ?? user.username      ?? '',
-    display_name: user.nickname   ?? user.displayName   ?? user.uniqueId ?? '',
-    avatar_url:   user.avatarLarger ?? user.avatarMedium ?? user.avatar ?? '',
-    bio:          user.signature  ?? user.bio           ?? '',
-    followers:    s.followerCount ?? s.fans             ?? 0,
-    following:    s.followingCount ?? 0,
-    post_count:   s.videoCount    ?? 0,
-    total_likes:  s.heartCount    ?? s.heart            ?? s.diggCount ?? 0,
-    verified:     user.verified   ?? false,
+    username:     user.uniqueId      ?? user.username     ?? '',
+    display_name: user.nickname      ?? user.displayName  ?? user.uniqueId ?? '',
+    avatar_url:   user.avatarLarger  ?? user.avatarMedium ?? user.avatar   ?? '',
+    bio:          user.signature     ?? user.bio          ?? '',
+    followers:    stats.followerCount ?? stats.fans        ?? stats.follower_count ?? 0,
+    following:    stats.followingCount ?? stats.following_count ?? 0,
+    post_count:   stats.videoCount    ?? stats.video_count   ?? 0,
+    total_likes:  stats.heartCount    ?? stats.heart         ?? stats.digg_count   ?? 0,
+    verified:     user.verified       ?? false,
     profile_url:  `https://www.tiktok.com/@${user.uniqueId ?? ''}`,
   };
 }
@@ -92,35 +87,34 @@ function mapUser(user: any, authorStats: any): AnalyticsResult['profile'] {
 // ── Main fetch ────────────────────────────────────────────────────────────────
 
 export async function fetchTikTok(handle: string): Promise<AnalyticsResult> {
-  const enc = encodeURIComponent(handle);
+  const enc = encodeURIComponent(handle.replace(/^@/, ''));
 
-  // User info
-  const infoRes = await rapidGet(`/api/user/info?uniqueId=${enc}`);
-  const userObj =
-    infoRes.data?.user       ??
-    infoRes.userInfo?.user   ??
-    infoRes.user             ??
-    infoRes.data             ??
-    infoRes;
+  // User info — returns { data: { user: {...}, stats: {...} } }
+  const infoRes  = await edGet(`/tt/user/info?username=${enc}`);
+  const userObj  =
+    infoRes.data?.user    ??
+    infoRes.userInfo?.user ??
+    infoRes.user          ??
+    infoRes.data          ??
+    {};
   const statsObj =
-    infoRes.data?.stats      ??
-    infoRes.userInfo?.stats  ??
-    infoRes.stats            ??
+    infoRes.data?.stats    ??
+    infoRes.userInfo?.stats ??
+    infoRes.stats          ??
     {};
 
-  if (!userObj?.uniqueId && !userObj?.username) {
+  if (!userObj.uniqueId && !userObj.username) {
     throw new Error(`TikTok profile not found: ${handle}`);
   }
 
-  // Videos
-  const videosRes = await rapidGet(`/api/user/posts?uniqueId=${enc}&count=30`);
+  // User posts — depth=3 → ~30 posts (10 per chunk); cursor=0 starts from newest
+  const postsRes  = await edGet(`/tt/user/posts?username=${enc}&depth=3&cursor=0`);
   const rawVideos: any[] =
-    videosRes.data?.videos     ??
-    videosRes.data?.aweme_list ??
-    videosRes.data?.itemList   ??
-    videosRes.videos           ??
-    videosRes.aweme_list       ??
-    videosRes.itemList         ??
+    postsRes.data?.data    ??
+    postsRes.data?.videos  ??
+    postsRes.data?.aweme_list ??
+    postsRes.videos        ??
+    postsRes.aweme_list    ??
     [];
 
   const posts: PostData[] = rawVideos.map(mapVideo);
@@ -135,17 +129,17 @@ export async function fetchTikTok(handle: string): Promise<AnalyticsResult> {
 
   return {
     platform: 'tiktok',
-    handle,
-    profile: mapUser(userObj, statsObj),
+    handle:   handle.replace(/^@/, ''),
+    profile:  mapUser(userObj, statsObj),
     summary: {
-      avg_views:               avgViews,
-      avg_likes:               avgLikes,
-      avg_comments:            avgComments,
-      avg_engagement_rate:     avgEngRate,
-      total_views:             totalViews,
+      avg_views:                  avgViews,
+      avg_likes:                  avgLikes,
+      avg_comments:               avgComments,
+      avg_engagement_rate:        avgEngRate,
+      total_views:                totalViews,
       posting_frequency_per_week: calcFrequency(posts.map(p => p.published_at)),
-      best_content_type:       topTypes[0]?.type ?? 'short',
-      top_content_types:       topTypes,
+      best_content_type:          topTypes[0]?.type ?? 'short',
+      top_content_types:          topTypes,
     },
     posts: sorted,
     fetched_at: Math.floor(Date.now() / 1000),
