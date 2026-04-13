@@ -1,18 +1,23 @@
 /**
  * TikTok public data via RapidAPI scraper.
  *
- * Recommended API: "TikTok Scraper" on RapidAPI
- * Host: tiktok-scraper7.p.rapidapi.com
- * Subscribe at: https://rapidapi.com/search/tiktok%20scraper
+ * Default API: "Tiktok API" by Lundehund on RapidAPI
+ * Host: tiktok-api23.p.rapidapi.com
+ * Subscribe at: https://rapidapi.com/Lundehund/api/tiktok-api23
  *
- * Same RAPIDAPI_KEY as Instagram. Set TIKTOK_RAPIDAPI_HOST to override host.
+ * Endpoints used:
+ *   GET /api/user/info?uniqueId={handle}         → profile + stats
+ *   GET /api/user/posts?uniqueId={handle}&count=30 → recent videos
+ *
+ * Override the host with TIKTOK_RAPIDAPI_HOST if you subscribe to a
+ * different provider. Update endpoint paths in fetchTikTok() accordingly.
  */
 
 import type { AnalyticsResult, PostData, ContentType } from '../types';
 import { calcFrequency, calcContentTypes } from './youtube';
 
 const RAPIDAPI_KEY  = process.env.RAPIDAPI_KEY!;
-const RAPIDAPI_HOST = process.env.TIKTOK_RAPIDAPI_HOST ?? 'tiktok-scraper7.p.rapidapi.com';
+const RAPIDAPI_HOST = process.env.TIKTOK_RAPIDAPI_HOST ?? 'tiktok-api23.p.rapidapi.com';
 const BASE          = `https://${RAPIDAPI_HOST}`;
 
 async function rapidGet(path: string) {
@@ -90,7 +95,7 @@ export async function fetchTikTok(handle: string): Promise<AnalyticsResult> {
   const enc = encodeURIComponent(handle);
 
   // User info
-  const infoRes = await rapidGet(`/user/info?uniqueId=${enc}`);
+  const infoRes = await rapidGet(`/api/user/info?uniqueId=${enc}`);
   const userObj =
     infoRes.data?.user       ??
     infoRes.userInfo?.user   ??
@@ -108,12 +113,14 @@ export async function fetchTikTok(handle: string): Promise<AnalyticsResult> {
   }
 
   // Videos
-  const videosRes = await rapidGet(`/user/posts?uniqueId=${enc}&count=30`);
+  const videosRes = await rapidGet(`/api/user/posts?uniqueId=${enc}&count=30`);
   const rawVideos: any[] =
-    videosRes.data?.videos   ??
+    videosRes.data?.videos     ??
     videosRes.data?.aweme_list ??
-    videosRes.videos         ??
-    videosRes.aweme_list     ??
+    videosRes.data?.itemList   ??
+    videosRes.videos           ??
+    videosRes.aweme_list       ??
+    videosRes.itemList         ??
     [];
 
   const posts: PostData[] = rawVideos.map(mapVideo);

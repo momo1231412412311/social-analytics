@@ -1,19 +1,23 @@
 /**
  * Instagram public data via RapidAPI scraper.
  *
- * Recommended API: "Instagram Scraper API" on RapidAPI
- * Host: instagram-scraper-api2.p.rapidapi.com
- * Subscribe at: https://rapidapi.com/search/instagram%20scraper
+ * Default API: "Instgram" by omarmhaimdat on RapidAPI
+ * Host: instagram230.p.rapidapi.com
+ * Subscribe at: https://rapidapi.com/omarmhaimdat/api/instagram230
  *
- * The response shapes below match the `instagram-scraper-api2` provider.
- * If you switch providers, update the normalization in mapPost() / mapProfile().
+ * Endpoints used:
+ *   GET /user?username={handle}        → profile (Instagram GraphQL format)
+ *   GET /user_posts?username={handle}  → recent posts list
+ *
+ * Override the host with INSTAGRAM_RAPIDAPI_HOST if you subscribe to a
+ * different provider. Update endpoint paths in fetchInstagram() accordingly.
  */
 
 import type { AnalyticsResult, PostData, ContentType } from '../types';
 import { calcFrequency, calcContentTypes } from './youtube';
 
 const RAPIDAPI_KEY  = process.env.RAPIDAPI_KEY!;
-const RAPIDAPI_HOST = process.env.INSTAGRAM_RAPIDAPI_HOST ?? 'instagram-scraper-api2.p.rapidapi.com';
+const RAPIDAPI_HOST = process.env.INSTAGRAM_RAPIDAPI_HOST ?? 'instagram230.p.rapidapi.com';
 const BASE          = `https://${RAPIDAPI_HOST}`;
 
 async function rapidGet(path: string) {
@@ -102,18 +106,23 @@ export async function fetchInstagram(handle: string): Promise<AnalyticsResult> {
   const enc = encodeURIComponent(handle);
 
   // Profile
-  const profileRes = await rapidGet(`/v1/info?username_or_id_or_url=${enc}`);
-  const user = profileRes.data?.user ?? profileRes.data ?? profileRes.user ?? profileRes;
+  const profileRes = await rapidGet(`/user?username=${enc}`);
+  const user =
+    profileRes.data?.user   ??
+    profileRes.data         ??
+    profileRes.user         ??
+    profileRes;
   if (!user?.username) {
     throw new Error(`Instagram profile not found: ${handle}`);
   }
 
-  // Posts (up to 50 recent)
-  const postsRes = await rapidGet(`/v1/posts?username_or_id_or_url=${enc}`);
+  // Posts (up to ~30 recent)
+  const postsRes = await rapidGet(`/user_posts?username=${enc}`);
   const rawPosts: any[] =
-    postsRes.data?.items                     ??
-    postsRes.data?.user?.edge_owner_to_timeline_media?.edges?.map((e: any) => e.node) ??
-    postsRes.items                           ??
+    postsRes.data?.items                                                                 ??
+    postsRes.data?.user?.edge_owner_to_timeline_media?.edges?.map((e: any) => e.node)   ??
+    postsRes.items                                                                       ??
+    postsRes.edges?.map((e: any) => e.node)                                              ??
     [];
 
   const posts: PostData[] = rawPosts.map(mapPost);
