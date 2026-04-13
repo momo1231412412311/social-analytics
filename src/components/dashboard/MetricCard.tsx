@@ -1,70 +1,27 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 interface MetricCardProps {
   label: string;
   value: string;
-  subValue?: string;
+  sub?: string;
   positive?: boolean;
   icon?: ReactNode;
-  loading?: boolean;
-  platform?: string;
-  size?: 'default' | 'sm';
+  accent?: string;   // tailwind bg class e.g. 'bg-purple-500/10'
 }
 
-const platformAccents: Record<string, string> = {
-  instagram: 'from-purple-500/10 via-pink-500/10 to-orange-400/10',
-  tiktok:    'from-pink-500/10 to-cyan-400/10',
-  youtube:   'from-red-600/10 to-red-400/10',
-};
-
-const platformIconColors: Record<string, string> = {
-  instagram: 'text-pink-400',
-  tiktok:    'text-cyan-400',
-  youtube:   'text-red-400',
-};
-
-export default function MetricCard({
-  label,
-  value,
-  subValue,
-  positive,
-  icon,
-  loading,
-  platform,
-  size = 'default',
-}: MetricCardProps) {
-  const accentClass = platform ? platformAccents[platform] ?? '' : '';
-  const iconColor = platform ? platformIconColors[platform] ?? 'text-zinc-400' : 'text-zinc-400';
-
-  if (loading) {
-    return (
-      <div className="card p-4 space-y-2">
-        <div className="h-3 w-20 bg-zinc-800 rounded animate-pulse" />
-        <div className="h-7 w-16 bg-zinc-800 rounded animate-pulse" />
-      </div>
-    );
-  }
-
+export default function MetricCard({ label, value, sub, positive, icon, accent }: MetricCardProps) {
   return (
-    <div className={`card card-hover p-4 ${accentClass ? `bg-gradient-to-br ${accentClass}` : ''}`}>
-      <div className="flex items-start justify-between gap-2">
-        <p className={`text-zinc-400 font-medium ${size === 'sm' ? 'text-xs' : 'text-xs'}`}>
-          {label}
-        </p>
-        {icon && (
-          <span className={`flex-shrink-0 ${iconColor}`}>{icon}</span>
-        )}
+    <div className={`card p-4 flex flex-col gap-1 ${accent ?? ''}`}>
+      <div className="flex items-center justify-between">
+        <span className="text-xs text-zinc-500 font-medium uppercase tracking-wide">{label}</span>
+        {icon && <span className="text-zinc-600">{icon}</span>}
       </div>
-      <p className={`font-bold text-white mt-1 tabular-nums ${size === 'sm' ? 'text-xl' : 'text-2xl'}`}>
-        {value}
-      </p>
-      {subValue && (
-        <p className={`text-xs mt-0.5 font-medium ${
-          positive === true ? 'text-emerald-400' :
-          positive === false ? 'text-red-400' : 'text-zinc-500'
-        }`}>
-          {subValue}
-        </p>
+      <p className="text-2xl font-bold text-white tabular-nums leading-tight">{value}</p>
+      {sub && (
+        <p className={`text-xs font-medium ${
+          positive === true  ? 'text-emerald-400' :
+          positive === false ? 'text-red-400'     : 'text-zinc-500'
+        }`}>{sub}</p>
       )}
     </div>
   );

@@ -1,150 +1,97 @@
 import Image from 'next/image';
-import { Heart, MessageCircle, Eye, Share2, Play } from 'lucide-react';
-
-interface Post {
-  id: number;
-  platform: string;
-  post_id: string;
-  title: string | null;
-  caption: string | null;
-  thumbnail_url: string | null;
-  post_url: string | null;
-  media_type: string | null;
-  published_at: number | null;
-  likes: number;
-  comments: number;
-  shares: number;
-  views: number;
-  engagement_rate: number;
-  watch_time_minutes: number;
-}
-
-interface TopPostsProps {
-  posts: Post[];
-}
+import { ExternalLink, Play, Image as ImageIcon, LayoutGrid } from 'lucide-react';
+import type { PostData } from '@/lib/types';
 
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(Math.round(n));
+  if (n >= 1_000)     return `${(n / 1_000).toFixed(1)}K`;
+  return n.toLocaleString();
 }
 
-const platformColors: Record<string, string> = {
-  instagram: 'bg-gradient-to-br from-purple-600 via-pink-600 to-orange-500',
-  tiktok:    'bg-gradient-to-br from-zinc-900 to-pink-800',
-  youtube:   'bg-gradient-to-br from-red-800 to-red-600',
+const typeIcon = {
+  short:    <Play className="w-3 h-3 fill-white" />,
+  video:    <Play className="w-3 h-3 fill-white" />,
+  photo:    <ImageIcon className="w-3 h-3" />,
+  carousel: <LayoutGrid className="w-3 h-3" />,
+  live:     <span className="text-[9px] font-bold">LIVE</span>,
+  unknown:  null,
 };
 
-const platformEmoji: Record<string, string> = {
-  instagram: '📷',
-  tiktok:    '🎵',
-  youtube:   '▶️',
-};
+function engColor(rate: number) {
+  if (rate >= 5)  return 'text-emerald-400';
+  if (rate >= 2)  return 'text-yellow-400';
+  return 'text-zinc-400';
+}
 
-export default function TopPosts({ posts }: TopPostsProps) {
-  if (posts.length === 0) {
-    return (
-      <p className="text-sm text-zinc-500 text-center py-8">
-        No posts found. Sync to fetch your content.
-      </p>
-    );
-  }
+export default function TopPosts({ posts }: { posts: PostData[] }) {
+  const top10 = posts.slice(0, 10);
+  if (top10.length === 0) return <p className="text-sm text-zinc-500 py-6 text-center">No posts found.</p>;
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-      {posts.map((post) => (
+    <div className="space-y-1">
+      {/* Header */}
+      <div className="grid grid-cols-[2rem_3rem_1fr_5rem_5rem_5rem_5rem_5rem] gap-3 px-3 py-2 text-[10px] uppercase tracking-wider text-zinc-500 border-b border-zinc-800">
+        <span>#</span>
+        <span />
+        <span>Post</span>
+        <span className="text-right">Views</span>
+        <span className="text-right">Likes</span>
+        <span className="text-right">Comments</span>
+        <span className="text-right">Eng %</span>
+        <span className="text-right">Date</span>
+      </div>
+
+      {top10.map((post, i) => (
         <a
-          key={`${post.platform}-${post.post_id}`}
-          href={post.post_url ?? '#'}
+          key={post.id}
+          href={post.post_url}
           target="_blank"
           rel="noopener noreferrer"
-          className="group relative bg-zinc-800 rounded-lg overflow-hidden border border-zinc-700 hover:border-zinc-500 transition-all duration-200 card-hover"
+          className="grid grid-cols-[2rem_3rem_1fr_5rem_5rem_5rem_5rem_5rem] gap-3 px-3 py-2 rounded-lg items-center hover:bg-zinc-800/60 transition-colors group"
         >
+          {/* Rank */}
+          <span className={`text-sm font-bold tabular-nums ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-zinc-300' : i === 2 ? 'text-amber-600' : 'text-zinc-600'}`}>
+            {i + 1}
+          </span>
+
           {/* Thumbnail */}
-          <div className="aspect-square relative">
+          <div className="relative w-12 h-8 rounded overflow-hidden bg-zinc-800 flex-shrink-0">
             {post.thumbnail_url ? (
               <Image
                 src={post.thumbnail_url}
-                alt={post.title ?? post.caption ?? 'Post'}
+                alt=""
                 fill
                 className="object-cover"
-                sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                sizes="48px"
                 unoptimized
               />
             ) : (
-              <div className={`w-full h-full flex items-center justify-center ${platformColors[post.platform] ?? 'bg-zinc-700'}`}>
-                <span className="text-3xl">{platformEmoji[post.platform] ?? '📄'}</span>
+              <div className="w-full h-full flex items-center justify-center text-zinc-600">
+                {typeIcon[post.content_type] ?? typeIcon.unknown}
               </div>
             )}
-
-            {/* Video indicator */}
-            {(post.media_type === 'VIDEO' || post.media_type === 'REELS') && (
-              <div className="absolute top-1.5 right-1.5 bg-black/60 rounded p-0.5">
-                <Play className="w-3 h-3 text-white fill-white" />
-              </div>
-            )}
-
-            {/* Platform badge */}
-            <div className="absolute top-1.5 left-1.5 text-xs">
-              {platformEmoji[post.platform]}
+            <div className="absolute bottom-0.5 right-0.5 bg-black/70 rounded p-0.5 text-white">
+              {typeIcon[post.content_type]}
             </div>
+          </div>
 
-            {/* Hover overlay */}
-            <div className="absolute inset-0 bg-black/0 group-hover:bg-black/60 transition-all duration-200 flex items-end">
-              <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 w-full p-2 space-y-1">
-                {post.caption && (
-                  <p className="text-[10px] text-zinc-200 line-clamp-2 leading-tight">
-                    {post.caption}
-                  </p>
-                )}
-                {post.title && !post.caption && (
-                  <p className="text-[10px] text-zinc-200 line-clamp-2 leading-tight">
-                    {post.title}
-                  </p>
-                )}
-              </div>
-            </div>
+          {/* Title */}
+          <div className="min-w-0">
+            <p className="text-xs text-zinc-200 truncate group-hover:text-white transition-colors">
+              {post.title || '(no caption)'}
+            </p>
           </div>
 
           {/* Stats */}
-          <div className="p-2 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold text-emerald-400">
-                {post.engagement_rate.toFixed(1)}% eng
-              </span>
-              {post.published_at && (
-                <span className="text-[10px] text-zinc-500">
-                  {new Date(post.published_at * 1000).toLocaleDateString('en', { month: 'short', day: 'numeric' })}
-                </span>
-              )}
-            </div>
-            <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
-              {post.views > 0 && (
-                <div className="flex items-center gap-1 text-[10px] text-zinc-400">
-                  <Eye className="w-2.5 h-2.5" />
-                  <span>{fmt(post.views)}</span>
-                </div>
-              )}
-              {post.likes > 0 && (
-                <div className="flex items-center gap-1 text-[10px] text-zinc-400">
-                  <Heart className="w-2.5 h-2.5" />
-                  <span>{fmt(post.likes)}</span>
-                </div>
-              )}
-              {post.comments > 0 && (
-                <div className="flex items-center gap-1 text-[10px] text-zinc-400">
-                  <MessageCircle className="w-2.5 h-2.5" />
-                  <span>{fmt(post.comments)}</span>
-                </div>
-              )}
-              {post.shares > 0 && (
-                <div className="flex items-center gap-1 text-[10px] text-zinc-400">
-                  <Share2 className="w-2.5 h-2.5" />
-                  <span>{fmt(post.shares)}</span>
-                </div>
-              )}
-            </div>
-          </div>
+          <span className="text-xs text-zinc-300 tabular-nums text-right font-medium">{fmt(post.views)}</span>
+          <span className="text-xs text-zinc-400 tabular-nums text-right">{fmt(post.likes)}</span>
+          <span className="text-xs text-zinc-400 tabular-nums text-right">{fmt(post.comments)}</span>
+          <span className={`text-xs tabular-nums text-right font-semibold ${engColor(post.engagement_rate)}`}>
+            {post.engagement_rate.toFixed(2)}%
+          </span>
+          <span className="text-xs text-zinc-500 tabular-nums text-right">
+            {new Date(post.published_at).toLocaleDateString('en', { month: 'short', day: 'numeric', year: '2-digit' })}
+          </span>
         </a>
       ))}
     </div>
