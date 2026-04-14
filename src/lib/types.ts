@@ -1,10 +1,11 @@
-export type Platform = 'instagram' | 'tiktok' | 'youtube';
+export type Platform = 'instagram' | 'tiktok' | 'youtube' | 'twitter';
 
 export type ContentType =
   | 'short'     // YouTube Shorts / TikTok / IG Reels
   | 'video'     // Regular video
-  | 'photo'     // Instagram photo
+  | 'photo'     // Instagram photo / tweet with image
   | 'carousel'  // Instagram carousel
+  | 'tweet'     // Plain text tweet
   | 'live'      // Live stream
   | 'unknown';
 
@@ -18,7 +19,7 @@ export interface PostData {
   likes: number;
   comments: number;
   shares: number;
-  duration_seconds: number;   // 0 for photos
+  duration_seconds: number;   // 0 for photos/tweets
   content_type: ContentType;
   engagement_rate: number;    // (likes+comments) / views * 100
 }
@@ -55,4 +56,5 @@ export interface AnalyticsResult {
   posts: PostData[];           // All fetched posts, sorted by views desc
   fetched_at: number;         // Unix timestamp
   from_cache?: boolean;
+  limited_data?: boolean;     // True when only meta-tag data available (no posts)
 }
