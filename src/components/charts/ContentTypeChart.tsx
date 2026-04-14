@@ -19,6 +19,7 @@ const TYPE_LABELS: Record<ContentType, string> = {
   video:    'Long-form Video',
   photo:    'Photo',
   carousel: 'Carousel',
+  tweet:    'Tweet',
   live:     'Live',
   unknown:  'Other',
 };
@@ -28,6 +29,7 @@ const TYPE_COLORS: Record<ContentType, string> = {
   video:    '#60a5fa',
   photo:    '#a78bfa',
   carousel: '#34d399',
+  tweet:    '#38bdf8',
   live:     '#fb923c',
   unknown:  '#6b7280',
 };
@@ -81,7 +83,6 @@ export default function ContentTypeChart({ types }: Props) {
         </BarChart>
       </ResponsiveContainer>
 
-      {/* Legend with post counts */}
       <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
         {data.map(d => (
           <div key={d.type} className="flex items-center gap-1.5 text-xs text-zinc-500">

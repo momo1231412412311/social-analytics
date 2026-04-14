@@ -1,13 +1,20 @@
 import Image from 'next/image';
 import { BadgeCheck, ExternalLink } from 'lucide-react';
-import type { AnalyticsResult } from '@/lib/types';
+import type { AnalyticsResult, Platform } from '@/lib/types';
 
-const platformColors = {
+const platformColors: Record<Platform, string> = {
   instagram: 'from-purple-600 via-pink-600 to-orange-500',
   tiktok:    'from-zinc-900 via-pink-700 to-cyan-600',
   youtube:   'from-red-700 to-red-500',
+  twitter:   'from-sky-600 to-sky-400',
 };
-const platformLabel = { instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube' };
+
+const platformLabel: Record<Platform, string> = {
+  instagram: 'Instagram',
+  tiktok:    'TikTok',
+  youtube:   'YouTube',
+  twitter:   'X / Twitter',
+};
 
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
@@ -73,7 +80,9 @@ export default function ProfileHeader({ result }: { result: AnalyticsResult }) {
           )}
           <div>
             <p className="text-lg font-bold text-white tabular-nums">{fmt(profile.post_count)}</p>
-            <p className="text-[10px] text-zinc-500 uppercase tracking-wide">Posts</p>
+            <p className="text-[10px] text-zinc-500 uppercase tracking-wide">
+              {platform === 'twitter' ? 'Tweets' : 'Posts'}
+            </p>
           </div>
           <div>
             <p className="text-lg font-bold text-white tabular-nums">

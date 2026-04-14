@@ -1,6 +1,6 @@
 import Image from 'next/image';
-import { ExternalLink, Play, Image as ImageIcon, LayoutGrid } from 'lucide-react';
-import type { PostData } from '@/lib/types';
+import { ExternalLink, Play, Image as ImageIcon, LayoutGrid, MessageSquare } from 'lucide-react';
+import type { PostData, ContentType } from '@/lib/types';
 
 function fmt(n: number) {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
@@ -8,11 +8,12 @@ function fmt(n: number) {
   return n.toLocaleString();
 }
 
-const typeIcon = {
+const typeIcon: Record<ContentType, React.ReactNode> = {
   short:    <Play className="w-3 h-3 fill-white" />,
   video:    <Play className="w-3 h-3 fill-white" />,
   photo:    <ImageIcon className="w-3 h-3" />,
   carousel: <LayoutGrid className="w-3 h-3" />,
+  tweet:    <MessageSquare className="w-3 h-3" />,
   live:     <span className="text-[9px] font-bold">LIVE</span>,
   unknown:  null,
 };
@@ -50,7 +51,9 @@ export default function TopPosts({ posts }: { posts: PostData[] }) {
           className="grid grid-cols-[2rem_3rem_1fr_5rem_5rem_5rem_5rem_5rem] gap-3 px-3 py-2 rounded-lg items-center hover:bg-zinc-800/60 transition-colors group"
         >
           {/* Rank */}
-          <span className={`text-sm font-bold tabular-nums ${i === 0 ? 'text-yellow-400' : i === 1 ? 'text-zinc-300' : i === 2 ? 'text-amber-600' : 'text-zinc-600'}`}>
+          <span className={`text-sm font-bold tabular-nums ${
+            i === 0 ? 'text-yellow-400' : i === 1 ? 'text-zinc-300' : i === 2 ? 'text-amber-600' : 'text-zinc-600'
+          }`}>
             {i + 1}
           </span>
 
