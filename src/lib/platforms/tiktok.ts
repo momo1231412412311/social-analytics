@@ -39,7 +39,7 @@ function mapVideo(item: any): PostData {
   // EnsembleData wraps TikTok's native aweme object; try nested and flat shapes
   const stats   = item.stats ?? item.statistics ?? {};
   const views   = stats.playCount   ?? stats.play_count  ?? item.play_count  ?? 0;
-  const likes   = stats.diggCount   ?? stats.like_count  ?? item.digg_count  ?? 0;
+  const likes   = stats.diggCount   ?? stats.digg_count  ?? stats.like_count  ?? item.digg_count  ?? 0;
   const comments= stats.commentCount ?? stats.comment_count ?? item.comment_count ?? 0;
   const shares  = stats.shareCount   ?? stats.share_count  ?? item.share_count   ?? 0;
   const dur     = item.video?.duration ?? item.duration ?? 0;
@@ -109,7 +109,10 @@ export async function fetchTikTok(handle: string): Promise<AnalyticsResult> {
 
   // User posts — depth=3 → ~30 posts (10 per chunk); cursor=0 starts from newest
   const postsRes  = await edGet(`/tt/user/posts?username=${enc}&depth=3&cursor=0`);
+  // EnsembleData returns { data: [...], cursor, has_more } — data IS the array.
+  // Guard with Array.isArray first; keep the nested-path fallbacks for any shape change.
   const rawVideos: any[] =
+    (Array.isArray(postsRes.data) ? postsRes.data : null) ??
     postsRes.data?.data    ??
     postsRes.data?.videos  ??
     postsRes.data?.aweme_list ??
