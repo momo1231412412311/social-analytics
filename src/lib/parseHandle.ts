@@ -36,12 +36,19 @@ function parseYouTubeUrl(url: URL): ParsedHandle {
 export function parseHandle(input: string, platform: Platform): ParsedHandle {
   const trimmed = input.trim();
 
-  // Try to parse as URL
+  // Try to parse as URL only if input looks like one (has a dot or starts with http).
+  // Plain handles like "@username" or "username" must NOT be parsed as URLs because
+  // new URL("https://@username") succeeds but yields an empty pathname, causing the
+  // extracted handle to be "" and the downstream API call to send username= (empty).
   let url: URL | null = null;
-  try {
-    url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
-  } catch {
-    // not a URL
+  const looksLikeUrl = trimmed.startsWith('http') ||
+    (trimmed.includes('.') && !trimmed.startsWith('@'));
+  if (looksLikeUrl) {
+    try {
+      url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
+    } catch {
+      // not a URL
+    }
   }
 
   if (url) {
