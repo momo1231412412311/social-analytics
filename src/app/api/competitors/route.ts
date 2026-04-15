@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { Platform } from '@/lib/types';
-import { findCompetitors, extractKeywords } from '@/lib/competitors';
+import { findCompetitors, hashtagsFromPosts, keywordsFromTitles } from '@/lib/competitors';
 import { getCached } from '@/lib/db';
 
 const ALLOWED: Platform[] = ['instagram', 'tiktok', 'youtube', 'twitter'];
@@ -20,22 +20,32 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Missing handle parameter.' }, { status: 400 });
   }
 
-  // Pull keywords from cached analytics result if available
-  let keywords = handle; // fallback
+  // Pull posts from cached analytics result — posts are required for good keywords
+  let posts: import('@/lib/types').PostData[] = [];
+  let keywordsLabel = handle; // shown in UI as "Based on: ..."
+
   try {
     const cached = await getCached(`${platform}:${handle}`, platform);
-    if (cached) {
-      keywords = extractKeywords(
-        cached.profile.display_name,
-        cached.profile.bio,
-        handle
-      );
+    if (cached?.posts?.length) {
+      posts = cached.posts;
+
+      // Build the human-readable label for what we're searching on
+      const hashtags  = hashtagsFromPosts(posts);
+      const titleKeys = keywordsFromTitles(posts.map(p => p.title));
+      keywordsLabel   = hashtags
+        ? hashtags.split(' ').map(t => `#${t}`).join(' ')
+        : titleKeys || handle;
     }
   } catch {
-    // ignore cache miss
+    // ignore cache miss — will still try with empty posts
   }
 
-  const competitors = await findCompetitors(platform, handle, keywords);
+  const competitors = await findCompetitors(platform, handle, posts);
 
-  return NextResponse.json({ platform, handle, keywords, competitors });
+  return NextResponse.json({
+    platform,
+    handle,
+    keywords: keywordsLabel,
+    competitors,
+  });
 }
